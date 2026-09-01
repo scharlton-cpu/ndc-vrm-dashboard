@@ -3,8 +3,6 @@ import type {
   IssueCategory,
   IssueSeverity,
   IssueStatus,
-  ContactStatus,
-  CanvassStatus,
   ConsentStatus,
   DonorTier,
   PledgeStatus,
@@ -77,7 +75,7 @@ function distributeInt(total: number, weights: number[]): number[] {
   const sumW = weights.reduce((a, b) => a + b, 0);
   const raw = weights.map((w) => (total * w) / sumW);
   const floors = raw.map(Math.floor);
-  let remainder = total - floors.reduce((a, b) => a + b, 0);
+  const remainder = total - floors.reduce((a, b) => a + b, 0);
   const order = raw
     .map((v, i) => ({ i, frac: v - Math.floor(v) }))
     .sort((a, b) => b.frac - a.frac);
@@ -413,7 +411,6 @@ async function main() {
     const target = voterTargets[pdIdx];
     const villageOptions = VILLAGE_NAMES[pd.constituencyCode];
     let remaining = target;
-    let clusterCursor = 0;
     while (remaining > 0) {
       const clusterSize = Math.min(
         weightedPick<number>([[1, 50], [2, 20], [3, 15], [4, 15]]),
@@ -549,7 +546,6 @@ async function main() {
       }
 
       remaining -= clusterSize;
-      clusterCursor += clusterSize;
     }
   });
 

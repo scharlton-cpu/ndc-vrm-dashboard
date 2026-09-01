@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { OverviewTab } from "@/components/voter360/overview-tab";
 import type { VoterProfile } from "@/lib/queries/voters";
-import { CONTACT_STATUS_LABEL, CONTACT_STATUS_VARIANT, ISSUE_STATUS_LABEL, ISSUE_STATUS_VARIANT, ISSUE_CATEGORY_LABEL } from "@/lib/labels";
+import { ISSUE_STATUS_LABEL, ISSUE_STATUS_VARIANT, ISSUE_CATEGORY_LABEL } from "@/lib/labels";
 
 type AuditRow = { id: string; action: string; recordType: string; module: string | null; createdAt: Date; user: { name: string } | null };
 
