@@ -14,6 +14,7 @@ export const MODULE_ROLES: Record<string, string[]> = {
     "ADMINISTRATOR",
     "CAMPAIGN_MANAGER",
     "DATA_LEAD",
+    "DATA_PROTECTION_LEAD",
     "FIELD_COORDINATOR",
     "ORGANISER",
   ],

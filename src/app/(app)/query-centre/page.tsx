@@ -1,8 +1,10 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/layout/page-header";
+import { AccessDenied } from "@/components/shared/access-denied";
 import { QueryBuilder } from "@/components/query-centre/query-builder";
 import { resolveConstituencyScope } from "@/lib/queries/scope";
+import { canAccessModule } from "@/lib/permissions";
 import { listSavedQueries, listSavedSegments } from "@/lib/queries/query-centre";
 import { ISSUE_CATEGORY_LABEL } from "@/lib/labels";
 import type { OptionLookup } from "@/lib/query-centre/describe";
@@ -11,6 +13,9 @@ export const metadata = { title: "Query Centre" };
 
 export default async function QueryCentrePage() {
   const session = await auth();
+  if (!canAccessModule(session, "query-centre")) {
+    return <AccessDenied module="the Query Centre" />;
+  }
   const scopeIds = resolveConstituencyScope(session, undefined);
 
   const [constituencies, pollingDivisions, savedQueries, savedSegments] = await Promise.all([

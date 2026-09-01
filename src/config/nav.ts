@@ -89,7 +89,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Voter Intelligence",
     items: [
       { label: "Voter Roll", href: "/voter-roll", icon: Database, status: "live" },
-      { label: "Query Centre", href: "/query-centre", icon: Search, status: "live" },
+      {
+        label: "Query Centre",
+        href: "/query-centre",
+        icon: Search,
+        status: "live",
+        roles: ["ADMINISTRATOR", "CAMPAIGN_MANAGER", "DATA_LEAD", "DATA_PROTECTION_LEAD", "FIELD_COORDINATOR", "ORGANISER"],
+      },
       { label: "Insights", href: "/insights", icon: LineChart, status: "stub" },
       { label: "Relationships", href: "/relationships", icon: Network, status: "stub" },
       { label: "Risk Register", href: "/risk-register", icon: ShieldAlert, status: "stub" },
