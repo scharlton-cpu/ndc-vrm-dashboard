@@ -314,6 +314,16 @@ async function main() {
     })),
   });
 
+  await prisma.userConstituencyAccess.createMany({
+    data: finalUsers.flatMap((u) =>
+      (u.constituencyCodes ?? []).map((code) => ({
+        id: uuid(),
+        userId: u.id,
+        constituencyId: constituencyIdByCode.get(code)!,
+      }))
+    ),
+  });
+
   const grandTotal = constituencyRows.reduce((s, c) => s + c.registeredElectors, 0);
   console.log(`  Registered electors total: ${grandTotal} (target ${TOTAL_REGISTERED_ELECTORS})`);
 
