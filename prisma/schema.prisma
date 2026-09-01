@@ -1,0 +1,1181 @@
+// NDC Voter Relationship Manager — database schema
+// PostgreSQL via Prisma. Designed so seeded demo data can be swapped for the
+// real Grenada electoral register without changing the application layer.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum DataQuality {
+  KNOWN
+  ESTIMATED
+  UNKNOWN
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+enum ContactStatus {
+  NOT_CONTACTED
+  ATTEMPTED
+  CONTACTED
+  REFUSED
+  MOVED
+  DECEASED
+}
+
+enum CanvassStatus {
+  NOT_CANVASSED
+  CANVASSED
+  REVISIT_NEEDED
+}
+
+enum InteractionCategory {
+  FIELD
+  PHONE
+  EVENT
+  DIGITAL
+  OFFICE
+}
+
+enum IssueCategory {
+  ROADS
+  DRAINAGE
+  WATER
+  GARBAGE
+  HOUSING
+  LAND_TENURE
+  EMPLOYMENT
+  HEALTH
+  SAFETY
+  EDUCATION
+  INFRASTRUCTURE
+  OTHER
+}
+
+enum IssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueStatus {
+  REPORTED
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum WalkListMemberStatus {
+  PENDING
+  VISITED
+  NOT_HOME
+  REFUSED
+  MOVED
+}
+
+enum WalkListStatus {
+  DRAFT
+  SAVED
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETE
+}
+
+enum CampaignPillar {
+  STRATEGY
+  OUTREACH
+  FINANCE
+  VOTER_INTELLIGENCE
+  OPERATIONS
+  ELECTION_READINESS
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  DONE
+}
+
+enum ContentStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ChannelKind {
+  BROADCAST
+  DIRECT
+}
+
+enum DonorTier {
+  GRASSROOTS
+  SUPPORTER
+  MAJOR
+  LEADERSHIP
+}
+
+enum PledgeStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum RelationshipType {
+  HOUSEHOLD
+  FAMILY
+  COMMUNITY_ORGANIZATION
+  PROFESSIONAL
+  BUSINESS
+  VOLUNTEER
+}
+
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskStatus {
+  OPEN
+  MONITORING
+  MITIGATED
+  CLOSED
+}
+
+enum AutomationStatus {
+  DRAFT
+  DRY_RUN
+  REVIEW
+  ACTIVE
+  DISABLED
+}
+
+enum ReadinessStatus {
+  READY
+  IN_PROGRESS
+  NOT_STARTED
+  AT_RISK
+  BLOCKED
+}
+
+enum EDayAssignmentRole {
+  POLL_WORKER
+  SIGN_HOLDER
+  DRIVER
+  COORDINATOR
+}
+
+enum ConsentStatus {
+  OPT_IN
+  OPT_OUT
+  UNKNOWN
+}
+
+enum SegmentKind {
+  GEOGRAPHIC
+  CANVASSING_LIST
+  CONSENT_STATE
+  CONTACT_COMPLETENESS
+  ISSUE_GROUP
+  OTHER
+}
+
+enum DataSourceType {
+  OFFICIAL_REGISTER
+  FIELD_CANVASS
+  IMPORT
+  MANUAL_ENTRY
+  ESTIMATE_MODEL
+}
+
+// ---------------------------------------------------------------------------
+// Identity, roles & governance
+// ---------------------------------------------------------------------------
+
+model Role {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "ADMINISTRATOR", "ORGANISER"
+  name        String
+  description String?
+  isNational  Boolean  @default(false) // national roles bypass constituency scoping
+  createdAt   DateTime @default(now())
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roles              UserRole[]
+  constituencyAccess UserConstituencyAccess[]
+
+  recordedInteractions Interaction[]        @relation("InteractionRecordedBy")
+  ownedIssues          Issue[]              @relation("IssueOwner")
+  issueReports         IssueReport[]        @relation("IssueReportedBy")
+  createdWalkLists     WalkList[]           @relation("WalkListCreatedBy")
+  assignedWalkLists    WalkList[]           @relation("WalkListAssignedTo")
+  canvassSessions      CanvassSession[]     @relation("CanvassSessionCanvasser")
+  ownedTasks           CampaignTask[]       @relation("TaskOwner")
+  authoredContent      ContentItem[]        @relation("ContentAuthor")
+  approvedContent      ContentItem[]        @relation("ContentApprover")
+  organizedEvents      FundraisingEvent[]   @relation("EventOrganizer")
+  submittedExpenses    Expense[]            @relation("ExpenseSubmittedBy")
+  ownedRisks           Risk[]               @relation("RiskOwner")
+  createdAutomations   AutomationRule[]     @relation("AutomationCreatedBy")
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+  savedQueries         SavedQuery[]
+  savedSegments        SavedSegment[]
+  coordinatedEDayOps   ElectionDayOperation[] @relation("EDayCoordinator")
+  ownedReadinessItems  ReadinessItem[]      @relation("ReadinessOwner")
+
+  @@map("users")
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model UserConstituencyAccess {
+  id             String @id @default(cuid())
+  userId         String
+  constituencyId String
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  constituency Constituency @relation(fields: [constituencyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, constituencyId])
+  @@map("user_constituency_access")
+}
+
+// ---------------------------------------------------------------------------
+// Geography
+// ---------------------------------------------------------------------------
+
+model Constituency {
+  id                 String  @id @default(cuid())
+  code               String  @unique
+  name               String  @unique
+  parish             String
+  registeredElectors Int // official benchmark count for this constituency
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  pollingDivisions    PollingDivision[]
+  voters              Voter[]
+  households          Household[]
+  interactions        Interaction[]
+  issues              Issue[]
+  fieldTurfs          FieldTurf[]
+  walkLists           WalkList[]
+  campaignTasks       CampaignTask[]
+  candidates          Candidate[]
+  electionResults     ElectionResult[]
+  mediaCampaigns      MediaCampaign[]
+  donors              Donor[]
+  risks               Risk[]
+  electionDayOps      ElectionDayOperation[]
+  readinessItems      ReadinessItem[]
+  userAccess          UserConstituencyAccess[]
+  auditLogs           AuditLog[]
+
+  @@map("constituencies")
+}
+
+model PollingDivision {
+  id                 String @id @default(cuid())
+  code               String @unique
+  name               String
+  constituencyId     String
+  registeredElectors Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  constituency Constituency @relation(fields: [constituencyId], references: [id], onDelete: Cascade)
+
+  voters         Voter[]
+  households     Household[]
+  interactions   Interaction[]
+  issues         Issue[]
+  fieldTurfs     FieldTurf[]
+  walkLists      WalkList[]
+  electionDayOps ElectionDayOperation[]
+
+  @@index([constituencyId])
+  @@map("polling_divisions")
+}
+
+// ---------------------------------------------------------------------------
+// Voter register & related operational data
+// ---------------------------------------------------------------------------
+
+model Voter {
+  id             String @id @default(cuid())
+  voterNumber    String @unique
+  firstName      String
+  lastName       String
+
+  sex            Sex?
+  sexSource      DataQuality @default(UNKNOWN)
+
+  dateOfBirth    DateTime?
+  ageBand        String?
+  ageBandSource  DataQuality @default(UNKNOWN)
+
+  occupation       String?
+  occupationSource DataQuality @default(UNKNOWN)
+
+  addressLine    String?
+  parish         String?
+
+  phone          String?
+  phoneSource    DataQuality @default(UNKNOWN)
+  email          String?
+  emailSource    DataQuality @default(UNKNOWN)
+
+  constituencyId    String
+  pollingDivisionId String
+
+  contactStatus   ContactStatus @default(NOT_CONTACTED)
+  canvassStatus   CanvassStatus @default(NOT_CANVASSED)
+  interactionCount Int          @default(0)
+  lastContactAt   DateTime?
+
+  overallDataQuality DataQuality @default(KNOWN)
+  recordSource       String      @default("2026 Official Register")
+
+  householdId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  constituency    Constituency    @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision @relation(fields: [pollingDivisionId], references: [id])
+  household       Household?      @relation(fields: [householdId], references: [id])
+
+  contacts          VoterContact[]
+  interactions      Interaction[]
+  issueReports      IssueReport[]
+  householdMemberOf HouseholdMember[]
+  walkListMembers   WalkListMember[]
+  surveyAnswers     SurveyAnswer[]
+  consentRecords    ConsentRecord[]
+  suppressionRecords SuppressionRecord[]
+  dataLineage       DataLineage[]
+  relationshipsA    Relationship[] @relation("RelationshipVoterA")
+  relationshipsB    Relationship[] @relation("RelationshipVoterB")
+
+  @@index([constituencyId])
+  @@index([pollingDivisionId])
+  @@index([lastName, firstName])
+  @@index([contactStatus])
+  @@index([canvassStatus])
+  @@map("voters")
+}
+
+model VoterContact {
+  id             String   @id @default(cuid())
+  voterId        String
+  channel        String // PHONE | EMAIL | SMS | WHATSAPP
+  value          String
+  isPrimary      Boolean  @default(false)
+  consentStatus  ConsentStatus @default(UNKNOWN)
+  createdAt      DateTime @default(now())
+
+  voter Voter @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@index([voterId])
+  @@map("voter_contacts")
+}
+
+model Household {
+  id                String   @id @default(cuid())
+  constituencyId    String
+  pollingDivisionId String
+  addressLine       String
+  parish            String?
+  lastVisitedAt     DateTime?
+  createdAt         DateTime @default(now())
+
+  constituency    Constituency    @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision @relation(fields: [pollingDivisionId], references: [id])
+
+  voters  Voter[]
+  members HouseholdMember[]
+
+  @@index([constituencyId])
+  @@index([pollingDivisionId])
+  @@map("households")
+}
+
+model HouseholdMember {
+  id                  String  @id @default(cuid())
+  householdId         String
+  voterId             String
+  relationshipToHead  String?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  voter     Voter     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, voterId])
+  @@map("household_members")
+}
+
+model InteractionType {
+  id       String              @id @default(cuid())
+  key      String              @unique
+  label    String
+  category InteractionCategory
+
+  interactions Interaction[]
+
+  @@map("interaction_types")
+}
+
+model Interaction {
+  id                String   @id @default(cuid())
+  voterId           String
+  typeId            String
+  constituencyId    String
+  pollingDivisionId String
+  summary           String?
+  outcome           String?
+  occurredAt        DateTime @default(now())
+  recordedByUserId  String?
+
+  voter           Voter           @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  type            InteractionType @relation(fields: [typeId], references: [id])
+  constituency    Constituency    @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision @relation(fields: [pollingDivisionId], references: [id])
+  recordedBy      User?           @relation("InteractionRecordedBy", fields: [recordedByUserId], references: [id])
+
+  @@index([voterId])
+  @@index([constituencyId])
+  @@index([occurredAt])
+  @@map("interactions")
+}
+
+// ---------------------------------------------------------------------------
+// Issues
+// ---------------------------------------------------------------------------
+
+model Issue {
+  id                       String        @id @default(cuid())
+  title                    String
+  category                 IssueCategory
+  constituencyId           String
+  pollingDivisionId        String?
+  description              String?
+  severity                 IssueSeverity @default(MEDIUM)
+  status                   IssueStatus   @default(REPORTED)
+  ownerUserId              String?
+  estimatedPeopleAffected  Int           @default(0)
+  firstReportedAt          DateTime      @default(now())
+  lastUpdateAt             DateTime      @updatedAt
+  resolutionNotes          String?
+
+  constituency    Constituency     @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision? @relation(fields: [pollingDivisionId], references: [id])
+  owner           User?            @relation("IssueOwner", fields: [ownerUserId], references: [id])
+  reports         IssueReport[]
+
+  @@index([constituencyId])
+  @@index([status])
+  @@index([category])
+  @@map("issues")
+}
+
+model IssueReport {
+  id               String   @id @default(cuid())
+  issueId          String
+  voterId          String?
+  reportedByUserId String?
+  note             String?
+  source           String   @default("Field Report")
+  createdAt        DateTime @default(now())
+
+  issue      Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  voter      Voter? @relation(fields: [voterId], references: [id])
+  reportedBy User?  @relation("IssueReportedBy", fields: [reportedByUserId], references: [id])
+
+  @@index([issueId])
+  @@map("issue_reports")
+}
+
+// ---------------------------------------------------------------------------
+// Field operations
+// ---------------------------------------------------------------------------
+
+model FieldTurf {
+  id                    String   @id @default(cuid())
+  name                  String
+  constituencyId        String
+  pollingDivisionId     String
+  status                String   @default("UNASSIGNED")
+  assignedCanvasserName String?
+  createdAt             DateTime @default(now())
+
+  constituency    Constituency    @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision @relation(fields: [pollingDivisionId], references: [id])
+
+  @@index([constituencyId])
+  @@map("field_turfs")
+}
+
+model WalkList {
+  id                String         @id @default(cuid())
+  name              String
+  constituencyId    String
+  pollingDivisionId String?
+  filterJson        Json?
+  estimatedSize     Int            @default(0)
+  status            WalkListStatus @default(DRAFT)
+  createdByUserId   String?
+  assignedToUserId  String?
+  createdAt         DateTime       @default(now())
+
+  constituency    Constituency     @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision? @relation(fields: [pollingDivisionId], references: [id])
+  createdBy       User?            @relation("WalkListCreatedBy", fields: [createdByUserId], references: [id])
+  assignedTo      User?            @relation("WalkListAssignedTo", fields: [assignedToUserId], references: [id])
+
+  members         WalkListMember[]
+  canvassSessions CanvassSession[]
+
+  @@index([constituencyId])
+  @@map("walk_lists")
+}
+
+model WalkListMember {
+  id         String                @id @default(cuid())
+  walkListId String
+  voterId    String
+  status     WalkListMemberStatus  @default(PENDING)
+
+  walkList WalkList @relation(fields: [walkListId], references: [id], onDelete: Cascade)
+  voter    Voter    @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@unique([walkListId, voterId])
+  @@map("walk_list_members")
+}
+
+model CanvassSession {
+  id                   String    @id @default(cuid())
+  walkListId           String?
+  canvasserUserId      String
+  startedAt            DateTime  @default(now())
+  endedAt              DateTime?
+  doorsAttempted       Int       @default(0)
+  conversationsLogged  Int       @default(0)
+  syncStatus           String    @default("SYNCED")
+
+  walkList  WalkList? @relation(fields: [walkListId], references: [id])
+  canvasser User      @relation("CanvassSessionCanvasser", fields: [canvasserUserId], references: [id])
+
+  surveyAnswers SurveyAnswer[]
+
+  @@map("canvass_sessions")
+}
+
+model SurveyQuestion {
+  id        String   @id @default(cuid())
+  text      String
+  type      String   @default("SINGLE_CHOICE")
+  options   Json?
+  createdAt DateTime @default(now())
+
+  answers SurveyAnswer[]
+
+  @@map("survey_questions")
+}
+
+model SurveyAnswer {
+  id               String   @id @default(cuid())
+  questionId       String
+  voterId          String?
+  canvassSessionId String?
+  answerText       String
+  createdAt        DateTime @default(now())
+
+  question       SurveyQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  voter          Voter?          @relation(fields: [voterId], references: [id])
+  canvassSession CanvassSession? @relation(fields: [canvassSessionId], references: [id])
+
+  @@map("survey_answers")
+}
+
+// ---------------------------------------------------------------------------
+// Campaign workflow / tasks
+// ---------------------------------------------------------------------------
+
+model CampaignTask {
+  id             String         @id @default(cuid())
+  title          String
+  description    String?
+  pillar         CampaignPillar
+  constituencyId String?
+  ownerUserId    String?
+  status         TaskStatus     @default(NOT_STARTED)
+  priority       String         @default("MEDIUM")
+  dueDate        DateTime?
+  progressPct    Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+  owner        User?         @relation("TaskOwner", fields: [ownerUserId], references: [id])
+
+  @@index([pillar])
+  @@index([status])
+  @@map("campaign_tasks")
+}
+
+model CampaignMilestone {
+  id        String   @id @default(cuid())
+  title     String
+  pillar    CampaignPillar
+  dueDate   DateTime?
+  status    TaskStatus @default(NOT_STARTED)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@map("campaign_milestones")
+}
+
+// ---------------------------------------------------------------------------
+// Strategy / candidates / elections
+// ---------------------------------------------------------------------------
+
+model Candidate {
+  id             String   @id @default(cuid())
+  name           String
+  constituencyId String?
+  bio            String?
+  photoUrl       String?
+  isLeader       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+
+  electionResults ElectionResult[]
+
+  @@map("candidates")
+}
+
+model Election {
+  id            String   @id @default(cuid())
+  name          String
+  cycleLabel    String   @unique
+  electionDate  DateTime
+  isActive      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  results ElectionResult[]
+
+  @@map("elections")
+}
+
+model ElectionResult {
+  id             String  @id @default(cuid())
+  electionId     String
+  constituencyId String
+  candidateId    String?
+  votesReceived  Int?
+  turnoutPct     Float?
+
+  election     Election     @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  constituency Constituency @relation(fields: [constituencyId], references: [id])
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id])
+
+  @@map("election_results")
+}
+
+// ---------------------------------------------------------------------------
+// Messaging & content
+// ---------------------------------------------------------------------------
+
+model CampaignMessage {
+  id              String   @id @default(cuid())
+  title           String
+  topic           String
+  body            String
+  status          ContentStatus @default(DRAFT)
+  approvedByName  String?
+  createdAt       DateTime @default(now())
+
+  @@map("campaign_messages")
+}
+
+model Channel {
+  id       String      @id @default(cuid())
+  name     String      @unique
+  kind     ChannelKind
+  platform String?
+
+  contentItems   ContentItem[]
+  mediaCampaigns MediaCampaign[]
+
+  @@map("channels")
+}
+
+model ContentItem {
+  id                String        @id @default(cuid())
+  title             String
+  contentType       String
+  channelId         String?
+  audienceGeography String?
+  message           String?
+  mediaUrl          String?
+  authorUserId      String?
+  approverUserId    String?
+  publishDate       DateTime?
+  status            ContentStatus @default(DRAFT)
+  createdAt         DateTime      @default(now())
+
+  channel  Channel? @relation(fields: [channelId], references: [id])
+  author   User?    @relation("ContentAuthor", fields: [authorUserId], references: [id])
+  approver User?    @relation("ContentApprover", fields: [approverUserId], references: [id])
+
+  @@index([status])
+  @@map("content_items")
+}
+
+model MediaCampaign {
+  id             String   @id @default(cuid())
+  campaignName   String
+  channelId      String?
+  platform       String
+  mediaType      String
+  constituencyId String?
+  startDate      DateTime
+  endDate        DateTime?
+  budget         Decimal  @db.Decimal(12, 2)
+  spend          Decimal  @default(0) @db.Decimal(12, 2)
+  claimedReach   Int      @default(0)
+  objective      String?
+  notes          String?
+
+  channel      Channel?      @relation(fields: [channelId], references: [id])
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+
+  @@map("media_campaigns")
+}
+
+// ---------------------------------------------------------------------------
+// Finance
+// ---------------------------------------------------------------------------
+
+model Donor {
+  id                 String    @id @default(cuid())
+  name               String
+  contactPhone       String?
+  contactEmail       String?
+  constituencyId     String?
+  tier               DonorTier @default(GRASSROOTS)
+  amountPledged      Decimal   @default(0) @db.Decimal(12, 2)
+  amountReceived     Decimal   @default(0) @db.Decimal(12, 2)
+  lastContributionAt DateTime?
+  notes              String?
+  status             String    @default("ACTIVE")
+  createdAt          DateTime  @default(now())
+
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+  donations    Donation[]
+  pledges      Pledge[]
+
+  @@map("donors")
+}
+
+model Donation {
+  id       String   @id @default(cuid())
+  donorId  String
+  amount   Decimal  @db.Decimal(12, 2)
+  date     DateTime @default(now())
+  method   String   @default("BANK_TRANSFER")
+  notes    String?
+
+  donor Donor @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@map("donations")
+}
+
+model Pledge {
+  id          String       @id @default(cuid())
+  donorId     String
+  amount      Decimal      @db.Decimal(12, 2)
+  amountPaid  Decimal      @default(0) @db.Decimal(12, 2)
+  dueDate     DateTime?
+  status      PledgeStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+
+  donor Donor @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@map("pledges")
+}
+
+model FundraisingEvent {
+  id             String   @id @default(cuid())
+  name           String
+  date           DateTime
+  location       String?
+  goal           Decimal  @default(0) @db.Decimal(12, 2)
+  amountRaised   Decimal  @default(0) @db.Decimal(12, 2)
+  expenses       Decimal  @default(0) @db.Decimal(12, 2)
+  attendance     Int      @default(0)
+  organizerUserId String?
+  status         String   @default("PLANNED")
+  notes          String?
+
+  organizer User? @relation("EventOrganizer", fields: [organizerUserId], references: [id])
+
+  @@map("fundraising_events")
+}
+
+model Vendor {
+  id       String  @id @default(cuid())
+  name     String
+  category String?
+  contact  String?
+  status   String  @default("ACTIVE")
+
+  expenses Expense[]
+
+  @@map("vendors")
+}
+
+model Expense {
+  id                String        @id @default(cuid())
+  vendorId          String?
+  category          String
+  amount            Decimal       @db.Decimal(12, 2)
+  date              DateTime      @default(now())
+  status            ExpenseStatus @default(PENDING)
+  description       String?
+  submittedByUserId String?
+
+  vendor      Vendor? @relation(fields: [vendorId], references: [id])
+  submittedBy User?   @relation("ExpenseSubmittedBy", fields: [submittedByUserId], references: [id])
+
+  @@map("expenses")
+}
+
+model EmployeePayment {
+  id             String    @id @default(cuid())
+  employeeName   String
+  role           String
+  amount         Decimal   @db.Decimal(12, 2)
+  payPeriodStart DateTime
+  payPeriodEnd   DateTime
+  status         String    @default("PENDING")
+  paidAt         DateTime?
+
+  @@map("employee_payments")
+}
+
+// ---------------------------------------------------------------------------
+// Relationships & risk
+// ---------------------------------------------------------------------------
+
+model Relationship {
+  id        String           @id @default(cuid())
+  voterAId  String
+  voterBId  String
+  type      RelationshipType
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  voterA Voter @relation("RelationshipVoterA", fields: [voterAId], references: [id], onDelete: Cascade)
+  voterB Voter @relation("RelationshipVoterB", fields: [voterBId], references: [id], onDelete: Cascade)
+
+  @@unique([voterAId, voterBId, type])
+  @@map("relationships")
+}
+
+model Risk {
+  id             String       @id @default(cuid())
+  title          String
+  category       String
+  constituencyId String?
+  severity       RiskSeverity @default(MEDIUM)
+  probability    String       @default("MEDIUM")
+  impact         String       @default("MEDIUM")
+  ownerUserId    String?
+  mitigation     String?
+  status         RiskStatus   @default(OPEN)
+  dateOpened     DateTime     @default(now())
+  lastReviewed   DateTime?
+
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+  owner        User?         @relation("RiskOwner", fields: [ownerUserId], references: [id])
+
+  @@map("risks")
+}
+
+// ---------------------------------------------------------------------------
+// Automation
+// ---------------------------------------------------------------------------
+
+model AutomationRule {
+  id              String           @id @default(cuid())
+  name            String
+  description     String?
+  triggerJson     Json
+  conditionJson   Json?
+  actionJson      Json
+  status          AutomationStatus @default(DRAFT)
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  createdBy User? @relation("AutomationCreatedBy", fields: [createdByUserId], references: [id])
+  runs      AutomationRun[]
+
+  @@map("automation_rules")
+}
+
+model AutomationRun {
+  id          String   @id @default(cuid())
+  ruleId      String
+  status      String
+  dryRun      Boolean  @default(true)
+  result      Json?
+  triggeredAt DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@map("automation_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications & audit
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String? // null = broadcast to all
+  title     String
+  body      String?
+  category  String   @default("SYSTEM")
+  module    String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  userId         String?
+  action         String
+  recordType     String
+  recordId       String?
+  previousValue  Json?
+  newValue       Json?
+  module         String?
+  constituencyId String?
+  ipAddress      String?
+  sessionInfo    String?
+  createdAt      DateTime @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id])
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+
+  @@index([userId])
+  @@index([recordType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Election Day operations & readiness
+// ---------------------------------------------------------------------------
+
+model ElectionDayOperation {
+  id                  String          @id @default(cuid())
+  constituencyId      String
+  pollingDivisionId   String
+  pollingLocation     String?
+  coordinatorUserId   String?
+  pollWorkersRequired Int             @default(0)
+  pollWorkersAssigned Int             @default(0)
+  signHoldersRequired Int             @default(0)
+  signHoldersAssigned Int             @default(0)
+  driversRequired     Int             @default(0)
+  driversAssigned     Int             @default(0)
+  status              ReadinessStatus @default(NOT_STARTED)
+  notes               String?
+  issues              String?
+  emergencyContact    String?
+  updatedAt           DateTime        @updatedAt
+
+  constituency    Constituency    @relation(fields: [constituencyId], references: [id])
+  pollingDivision PollingDivision @relation(fields: [pollingDivisionId], references: [id])
+  coordinator     User?           @relation("EDayCoordinator", fields: [coordinatorUserId], references: [id])
+
+  assignments ElectionDayAssignment[]
+
+  @@index([constituencyId])
+  @@map("election_day_operations")
+}
+
+model ElectionDayAssignment {
+  id                 String             @id @default(cuid())
+  operationId        String
+  role               EDayAssignmentRole
+  assignedName       String
+  phone              String?
+  status             String             @default("CONFIRMED")
+
+  operation ElectionDayOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@map("election_day_assignments")
+}
+
+model ReadinessItem {
+  id             String          @id @default(cuid())
+  section        String
+  constituencyId String?
+  title          String
+  status         ReadinessStatus @default(NOT_STARTED)
+  ownerUserId    String?
+  notes          String?
+  updatedAt      DateTime        @updatedAt
+
+  constituency Constituency? @relation(fields: [constituencyId], references: [id])
+  owner        User?         @relation("ReadinessOwner", fields: [ownerUserId], references: [id])
+
+  @@map("readiness_items")
+}
+
+// ---------------------------------------------------------------------------
+// Query Centre / segments / provenance
+// ---------------------------------------------------------------------------
+
+model SavedQuery {
+  id              String   @id @default(cuid())
+  name            String
+  category        String   @default("Voter Register")
+  filterJson      Json
+  columnsJson     Json?
+  createdByUserId String?
+  isShared        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  createdBy User? @relation(fields: [createdByUserId], references: [id])
+
+  @@map("saved_queries")
+}
+
+model SavedSegment {
+  id              String      @id @default(cuid())
+  name            String
+  description     String?
+  kind            SegmentKind @default(OTHER)
+  filterJson      Json
+  voterCount      Int         @default(0)
+  createdByUserId String?
+  createdAt       DateTime    @default(now())
+
+  createdBy User? @relation(fields: [createdByUserId], references: [id])
+
+  @@map("saved_segments")
+}
+
+model DataSource {
+  id             String         @id @default(cuid())
+  name           String
+  description    String?
+  type           DataSourceType
+  lastImportedAt DateTime?
+
+  lineage DataLineage[]
+
+  @@map("data_sources")
+}
+
+model DataLineage {
+  id             String   @id @default(cuid())
+  voterId        String?
+  fieldName      String
+  sourceId       String
+  capturedAt     DateTime @default(now())
+  capturedByName String?
+
+  voter  Voter?     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  source DataSource @relation(fields: [sourceId], references: [id])
+
+  @@map("data_lineage")
+}
+
+model ConsentRecord {
+  id         String        @id @default(cuid())
+  voterId    String
+  channel    String
+  status     ConsentStatus @default(UNKNOWN)
+  capturedAt DateTime      @default(now())
+  source     String?
+
+  voter Voter @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@map("consent_records")
+}
+
+model SuppressionRecord {
+  id        String   @id @default(cuid())
+  voterId   String
+  reason    String
+  channel   String? // null = suppress all channels
+  createdAt DateTime @default(now())
+
+  voter Voter @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@map("suppression_records")
+}
