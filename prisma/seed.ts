@@ -1,6 +1,19 @@
 import { PrismaClient } from "@prisma/client";
+import type {
+  IssueCategory,
+  IssueSeverity,
+  IssueStatus,
+  ContactStatus,
+  CanvassStatus,
+  ConsentStatus,
+  DonorTier,
+  PledgeStatus,
+  CampaignPillar,
+  TaskStatus,
+  ReadinessStatus,
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { randomUUID } from "node:crypto";
+import { randomUUID as cryptoRandomUUID } from "node:crypto";
 
 import { ROLE_DEFINITIONS } from "../src/lib/roles";
 import { CONSTITUENCIES, TOTAL_REGISTERED_ELECTORS, VILLAGE_NAMES } from "./seed-data/geo";
@@ -14,6 +27,12 @@ import {
 } from "./seed-data/names";
 
 const prisma = new PrismaClient();
+
+/** Plain-`string` wrapper — avoids the branded UUID template-literal type
+ * that `crypto.randomUUID()` returns leaking into every id field's inferred type. */
+function uuid(): string {
+  return cryptoRandomUUID();
+}
 
 // ---------------------------------------------------------------------------
 // Deterministic RNG so the demo dataset is reproducible across seed runs.
@@ -156,14 +175,14 @@ async function main() {
   // ---------------------------------------------------------------------
   console.log("Seeding roles & users…");
   const roleRows = ROLE_DEFINITIONS.map((r) => ({
-    id: randomUUID(),
+    id: uuid(),
     key: r.key,
     name: r.name,
     description: r.description,
     isNational: r.isNational,
   }));
   await prisma.role.createMany({ data: roleRows });
-  const roleIdByKey = new Map(roleRows.map((r) => [r.key, r.id]));
+  const roleIdByKey = new Map<string, string>(roleRows.map((r) => [r.key, r.id]));
 
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
 
@@ -175,33 +194,33 @@ async function main() {
     constituencyCodes?: string[];
   };
   const users: SeedUser[] = [
-    { id: randomUUID(), name: "Alicia Redhead", email: "admin@ndcvrm.gd", roleKeys: ["ADMINISTRATOR"] },
-    { id: randomUUID(), name: "Marcus Charles", email: "campaign.manager@ndcvrm.gd", roleKeys: ["CAMPAIGN_MANAGER"] },
-    { id: randomUUID(), name: "Dr. Yolande Frederick", email: "candidate@ndcvrm.gd", roleKeys: ["CANDIDATE"] },
-    { id: randomUUID(), name: "Kester Baptiste", email: "data.lead@ndcvrm.gd", roleKeys: ["DATA_LEAD"] },
-    { id: randomUUID(), name: "Sherma Antoine", email: "comms.lead@ndcvrm.gd", roleKeys: ["COMMUNICATIONS_LEAD"] },
-    { id: randomUUID(), name: "Winston Nedd", email: "finance.lead@ndcvrm.gd", roleKeys: ["FINANCE_LEAD"] },
-    { id: randomUUID(), name: "Petronella Isaac", email: "dpo@ndcvrm.gd", roleKeys: ["DATA_PROTECTION_LEAD"] },
+    { id: uuid(), name: "Alicia Redhead", email: "admin@ndcvrm.gd", roleKeys: ["ADMINISTRATOR"] },
+    { id: uuid(), name: "Marcus Charles", email: "campaign.manager@ndcvrm.gd", roleKeys: ["CAMPAIGN_MANAGER"] },
+    { id: uuid(), name: "Dr. Yolande Frederick", email: "candidate@ndcvrm.gd", roleKeys: ["CANDIDATE"] },
+    { id: uuid(), name: "Kester Baptiste", email: "data.lead@ndcvrm.gd", roleKeys: ["DATA_LEAD"] },
+    { id: uuid(), name: "Sherma Antoine", email: "comms.lead@ndcvrm.gd", roleKeys: ["COMMUNICATIONS_LEAD"] },
+    { id: uuid(), name: "Winston Nedd", email: "finance.lead@ndcvrm.gd", roleKeys: ["FINANCE_LEAD"] },
+    { id: uuid(), name: "Petronella Isaac", email: "dpo@ndcvrm.gd", roleKeys: ["DATA_PROTECTION_LEAD"] },
     {
-      id: randomUUID(),
+      id: uuid(),
       name: "Curtis Gilbert",
       email: "field.coordinator@ndcvrm.gd",
       roleKeys: ["FIELD_COORDINATOR"],
       constituencyCodes: ["TSG", "SGNE", "SGNW", "SGS", "SGSE"],
     },
-    { id: randomUUID(), name: "Merle Simon", email: "organiser.tsg@ndcvrm.gd", roleKeys: ["ORGANISER"], constituencyCodes: ["TSG"] },
+    { id: uuid(), name: "Merle Simon", email: "organiser.tsg@ndcvrm.gd", roleKeys: ["ORGANISER"], constituencyCodes: ["TSG"] },
   ];
 
   for (const c of CONSTITUENCIES) {
     users.push({
-      id: randomUUID(),
+      id: uuid(),
       name: `${pick(c.divisions % 2 === 0 ? MALE_FIRST_NAMES : FEMALE_FIRST_NAMES)} ${pick(LAST_NAMES)}`,
       email: `organiser.${c.code.toLowerCase()}@ndcvrm.gd`,
       roleKeys: ["ORGANISER"],
       constituencyCodes: [c.code],
     });
     users.push({
-      id: randomUUID(),
+      id: uuid(),
       name: `${pick(MALE_FIRST_NAMES)} ${pick(LAST_NAMES)}`,
       email: `canvasser.${c.code.toLowerCase()}@ndcvrm.gd`,
       roleKeys: ["CANVASSER"],
@@ -227,7 +246,7 @@ async function main() {
   });
   await prisma.userRole.createMany({
     data: finalUsers.flatMap((u) =>
-      u.roleKeys.map((rk) => ({ id: randomUUID(), userId: u.id, roleId: roleIdByKey.get(rk)! }))
+      u.roleKeys.map((rk) => ({ id: uuid(), userId: u.id, roleId: roleIdByKey.get(rk)! }))
     ),
   });
 
@@ -240,7 +259,7 @@ async function main() {
   const pdRows: PD[] = [];
   const constituencyIdByCode = new Map<string, string>();
   const constituencyRows = CONSTITUENCIES.map((c) => {
-    const id = randomUUID();
+    const id = uuid();
     constituencyIdByCode.set(c.code, id);
     return { id, code: c.code, name: c.name, parish: c.parish, registeredElectors: 0 };
   });
@@ -262,7 +281,7 @@ async function main() {
     const village = villageOptions[meta.index % villageOptions.length];
     const code = `${meta.constituencyCode}-${String(meta.index + 1).padStart(2, "0")}`;
     pdRows.push({
-      id: randomUUID(),
+      id: uuid(),
       code,
       name: `${village} Polling Division`,
       constituencyId,
@@ -321,7 +340,7 @@ async function main() {
     { key: "OFFICE_VISIT", label: "Office Visit", category: "OFFICE" as const },
     { key: "EMAIL_OUTREACH", label: "Email Outreach", category: "DIGITAL" as const },
   ];
-  const interactionTypeRows = interactionTypeDefs.map((t) => ({ id: randomUUID(), ...t }));
+  const interactionTypeRows = interactionTypeDefs.map((t) => ({ id: uuid(), ...t }));
   await prisma.interactionType.createMany({ data: interactionTypeRows });
 
   // ---------------------------------------------------------------------
@@ -397,7 +416,7 @@ async function main() {
 
       let householdId: string | null = null;
       if (clusterSize >= 2) {
-        householdId = randomUUID();
+        householdId = uuid();
         householdRows.push({
           id: householdId,
           constituencyId: pd.constituencyId,
@@ -479,7 +498,7 @@ async function main() {
             ? "UNKNOWN"
             : "ESTIMATED";
 
-        const voterId = randomUUID();
+        const voterId = uuid();
         voterRows.push({
           id: voterId,
           voterNumber: `GD${voterSeq++}`,
@@ -511,7 +530,7 @@ async function main() {
 
         if (householdId) {
           householdMemberRows.push({
-            id: randomUUID(),
+            id: uuid(),
             householdId,
             voterId,
             relationshipToHead: m === 0 ? "Head of Household" : pick(["Spouse", "Child", "Sibling", "Parent", "Other Relative"]),
@@ -535,21 +554,21 @@ async function main() {
 
   // Voter contacts (structured multi-channel)
   console.log("Seeding voter contacts, interactions, consent…");
-  const contactRows: { id: string; voterId: string; channel: string; value: string; isPrimary: boolean; consentStatus: string }[] = [];
-  const consentRows: { id: string; voterId: string; channel: string; status: string; source: string }[] = [];
+  const contactRows: { id: string; voterId: string; channel: string; value: string; isPrimary: boolean; consentStatus: ConsentStatus }[] = [];
+  const consentRows: { id: string; voterId: string; channel: string; status: ConsentStatus; source: string }[] = [];
   for (const v of voterRows) {
     if (v.phone) {
-      const consentStatus = weightedPick([["OPT_IN", 0.45], ["OPT_OUT", 0.1], ["UNKNOWN", 0.45]]);
-      contactRows.push({ id: randomUUID(), voterId: v.id, channel: "PHONE", value: v.phone, isPrimary: true, consentStatus });
+      const consentStatus = weightedPick<ConsentStatus>([["OPT_IN", 0.45], ["OPT_OUT", 0.1], ["UNKNOWN", 0.45]]);
+      contactRows.push({ id: uuid(), voterId: v.id, channel: "PHONE", value: v.phone, isPrimary: true, consentStatus });
       if (rand() < 0.3) {
-        consentRows.push({ id: randomUUID(), voterId: v.id, channel: "PHONE", status: consentStatus, source: "Field Canvass" });
+        consentRows.push({ id: uuid(), voterId: v.id, channel: "PHONE", status: consentStatus, source: "Field Canvass" });
       }
     }
     if (v.email) {
-      const consentStatus = weightedPick([["OPT_IN", 0.4], ["OPT_OUT", 0.08], ["UNKNOWN", 0.52]]);
-      contactRows.push({ id: randomUUID(), voterId: v.id, channel: "EMAIL", value: v.email, isPrimary: !v.phone, consentStatus });
+      const consentStatus = weightedPick<ConsentStatus>([["OPT_IN", 0.4], ["OPT_OUT", 0.08], ["UNKNOWN", 0.52]]);
+      contactRows.push({ id: uuid(), voterId: v.id, channel: "EMAIL", value: v.email, isPrimary: !v.phone, consentStatus });
       if (rand() < 0.3) {
-        consentRows.push({ id: randomUUID(), voterId: v.id, channel: "EMAIL", status: consentStatus, source: "Field Canvass" });
+        consentRows.push({ id: uuid(), voterId: v.id, channel: "EMAIL", status: consentStatus, source: "Field Canvass" });
       }
     }
   }
@@ -558,7 +577,7 @@ async function main() {
 
   const suppressionCandidates = shuffle(voterRows.filter((v) => v.contactStatus === "REFUSED" || v.contactStatus === "DECEASED"));
   const suppressionRows = suppressionCandidates.slice(0, Math.min(60, suppressionCandidates.length)).map((v) => ({
-    id: randomUUID(),
+    id: uuid(),
     voterId: v.id,
     reason: v.contactStatus === "DECEASED" ? "Deceased — confirmed by household" : "Voter requested no further contact",
     channel: null,
@@ -587,7 +606,7 @@ async function main() {
     for (let i = 0; i < v.interactionCount; i++) {
       const typeId = i === 0 && v.canvassStatus === "CANVASSED" ? pick(fieldTypeIds) : pick(otherTypeIds);
       interactionRows.push({
-        id: randomUUID(),
+        id: uuid(),
         voterId: v.id,
         typeId,
         constituencyId: v.constituencyId,
@@ -608,16 +627,16 @@ async function main() {
   // Issues
   // ---------------------------------------------------------------------
   console.log("Seeding issue register…");
-  const categories = Object.keys(ISSUE_TITLES);
+  const categories = Object.keys(ISSUE_TITLES) as IssueCategory[];
   const issueRows: {
     id: string;
     title: string;
-    category: string;
+    category: IssueCategory;
     constituencyId: string;
     pollingDivisionId: string | null;
     description: string | null;
-    severity: string;
-    status: string;
+    severity: IssueSeverity;
+    status: IssueStatus;
     ownerUserId: string | null;
     estimatedPeopleAffected: number;
     firstReportedAt: Date;
@@ -637,18 +656,18 @@ async function main() {
     const constituency = pick(constituencyRows);
     const pdForConstituency = pdRows.filter((p) => p.constituencyId === constituency.id);
     const pollingDivisionId = rand() < 0.6 ? pick(pdForConstituency).id : null;
-    const status = weightedPick<string>([
+    const status = weightedPick<IssueStatus>([
       ["REPORTED", 0.28],
       ["ACKNOWLEDGED", 0.2],
       ["IN_PROGRESS", 0.25],
       ["RESOLVED", 0.2],
       ["CLOSED", 0.07],
     ]);
-    const severity = weightedPick<string>([["LOW", 0.3], ["MEDIUM", 0.4], ["HIGH", 0.22], ["CRITICAL", 0.08]]);
+    const severity = weightedPick<IssueSeverity>([["LOW", 0.3], ["MEDIUM", 0.4], ["HIGH", 0.22], ["CRITICAL", 0.08]]);
     const staffPool = staffByConstituency.get(constituency.code) ?? [dataLeadId];
     const firstReportedAt = randomDateBetween(CAMPAIGN_START, CAMPAIGN_NOW);
 
-    const issueId = randomUUID();
+    const issueId = uuid();
     issueRows.push({
       id: issueId,
       title: pick(ISSUE_TITLES[category]),
@@ -668,7 +687,7 @@ async function main() {
     const reportCount = randInt(1, 6);
     for (let r = 0; r < reportCount; r++) {
       issueReportRows.push({
-        id: randomUUID(),
+        id: uuid(),
         issueId,
         voterId: constituencyVoters.length > 0 && rand() < 0.7 ? pick(constituencyVoters).id : null,
         reportedByUserId: rand() < 0.4 ? pick(staffPool) : null,
@@ -686,9 +705,9 @@ async function main() {
   // Finance: donors, donations, pledges
   // ---------------------------------------------------------------------
   console.log("Seeding finance data…");
-  const donorRows: { id: string; name: string; contactPhone: string; contactEmail: string; constituencyId: string | null; tier: string; amountPledged: number; amountReceived: number; lastContributionAt: Date; status: string }[] = [];
+  const donorRows: { id: string; name: string; contactPhone: string; contactEmail: string; constituencyId: string | null; tier: DonorTier; amountPledged: number; amountReceived: number; lastContributionAt: Date; status: string }[] = [];
   const donationRows: { id: string; donorId: string; amount: number; date: Date; method: string }[] = [];
-  const pledgeRows: { id: string; donorId: string; amount: number; amountPaid: number; dueDate: Date; status: string }[] = [];
+  const pledgeRows: { id: string; donorId: string; amount: number; amountPaid: number; dueDate: Date; status: PledgeStatus }[] = [];
 
   const TIER_RANGE: Record<string, [number, number]> = {
     GRASSROOTS: [50, 300],
@@ -697,10 +716,10 @@ async function main() {
     LEADERSHIP: [10000, 50000],
   };
   for (let i = 0; i < 48; i++) {
-    const tier = weightedPick<string>([["GRASSROOTS", 0.55], ["SUPPORTER", 0.3], ["MAJOR", 0.12], ["LEADERSHIP", 0.03]]);
+    const tier = weightedPick<DonorTier>([["GRASSROOTS", 0.55], ["SUPPORTER", 0.3], ["MAJOR", 0.12], ["LEADERSHIP", 0.03]]);
     const [lo, hi] = TIER_RANGE[tier];
     const isFemale = rand() < 0.5;
-    const donorId = randomUUID();
+    const donorId = uuid();
     const donationCount = randInt(1, 3);
     let received = 0;
     const dDates: Date[] = [];
@@ -709,13 +728,13 @@ async function main() {
       received += amount;
       const date = randomDateBetween(CAMPAIGN_START, CAMPAIGN_NOW);
       dDates.push(date);
-      donationRows.push({ id: randomUUID(), donorId, amount, date, method: pick(["BANK_TRANSFER", "CASH", "CHEQUE", "MOBILE_MONEY"]) });
+      donationRows.push({ id: uuid(), donorId, amount, date, method: pick(["BANK_TRANSFER", "CASH", "CHEQUE", "MOBILE_MONEY"]) });
     }
     const pledged = received + (rand() < 0.4 ? randInt(lo, hi) : 0);
     if (pledged > received) {
       const dueDate = randomDateBetween(CAMPAIGN_NOW, new Date("2027-02-01"));
       pledgeRows.push({
-        id: randomUUID(),
+        id: uuid(),
         donorId,
         amount: pledged - received,
         amountPaid: 0,
@@ -744,7 +763,7 @@ async function main() {
   // Campaign tasks & readiness
   // ---------------------------------------------------------------------
   console.log("Seeding campaign tasks & election readiness…");
-  const pillars = ["STRATEGY", "OUTREACH", "FINANCE", "VOTER_INTELLIGENCE", "OPERATIONS", "ELECTION_READINESS"];
+  const pillars: CampaignPillar[] = ["STRATEGY", "OUTREACH", "FINANCE", "VOTER_INTELLIGENCE", "OPERATIONS", "ELECTION_READINESS"];
   const taskTitlesByPillar: Record<string, string[]> = {
     STRATEGY: ["Finalize candidate messaging framework", "Approve campaign milestone calendar", "Review key issues briefing"],
     OUTREACH: ["Publish weekly content calendar", "Coordinate town hall in target constituency", "Launch WhatsApp broadcast list"],
@@ -756,11 +775,11 @@ async function main() {
   const taskRows = [];
   for (let i = 0; i < 60; i++) {
     const pillar = pick(pillars);
-    const status = weightedPick<string>([["NOT_STARTED", 0.25], ["IN_PROGRESS", 0.4], ["BLOCKED", 0.1], ["DONE", 0.25]]);
+    const status = weightedPick<TaskStatus>([["NOT_STARTED", 0.25], ["IN_PROGRESS", 0.4], ["BLOCKED", 0.1], ["DONE", 0.25]]);
     const constituency = rand() < 0.5 ? pick(constituencyRows) : null;
     const staffPool = constituency ? staffByConstituency.get(constituency.code) ?? [dataLeadId] : finalUsers.map((u) => u.id);
     taskRows.push({
-      id: randomUUID(),
+      id: uuid(),
       title: pick(taskTitlesByPillar[pillar]),
       description: null,
       pillar,
@@ -791,21 +810,21 @@ async function main() {
   for (const section of readinessSections) {
     if (section.national) {
       readinessRows.push({
-        id: randomUUID(),
+        id: uuid(),
         section: section.key,
         constituencyId: null,
         title: section.key,
-        status: weightedPick<string>([["READY", 0.2], ["IN_PROGRESS", 0.45], ["NOT_STARTED", 0.2], ["AT_RISK", 0.1], ["BLOCKED", 0.05]]),
+        status: weightedPick<ReadinessStatus>([["READY", 0.2], ["IN_PROGRESS", 0.45], ["NOT_STARTED", 0.2], ["AT_RISK", 0.1], ["BLOCKED", 0.05]]),
         ownerUserId: pick(finalUsers.filter((u) => !u.constituencyCodes).map((u) => u.id)),
       });
     } else {
       for (const c of constituencyRows) {
         readinessRows.push({
-          id: randomUUID(),
+          id: uuid(),
           section: section.key,
           constituencyId: c.id,
           title: `${section.key} — ${c.name}`,
-          status: weightedPick<string>([["READY", 0.2], ["IN_PROGRESS", 0.45], ["NOT_STARTED", 0.2], ["AT_RISK", 0.1], ["BLOCKED", 0.05]]),
+          status: weightedPick<ReadinessStatus>([["READY", 0.2], ["IN_PROGRESS", 0.45], ["NOT_STARTED", 0.2], ["AT_RISK", 0.1], ["BLOCKED", 0.05]]),
           ownerUserId: pick(staffByConstituency.get(constituencyRows.find((cc) => cc.id === c.id)!.code) ?? [dataLeadId]),
         });
       }
@@ -824,7 +843,7 @@ async function main() {
     const startedAt = randomDateBetween(CAMPAIGN_START, CAMPAIGN_NOW);
     const doorsAttempted = randInt(8, 45);
     sessionRows.push({
-      id: randomUUID(),
+      id: uuid(),
       canvasserUserId: canvasser.id,
       startedAt,
       endedAt: new Date(startedAt.getTime() + randInt(45, 180) * 60000),
@@ -840,10 +859,10 @@ async function main() {
   // ---------------------------------------------------------------------
   await prisma.dataSource.createMany({
     data: [
-      { id: randomUUID(), name: "June 2026 Official Voter Register", description: "Grenada Electoral Office register export.", type: "OFFICIAL_REGISTER" },
-      { id: randomUUID(), name: "Field Canvass Reports", description: "Door-to-door and phone canvassing results.", type: "FIELD_CANVASS" },
-      { id: randomUUID(), name: "Demographic Estimate Model", description: "Age-band and occupation inference where the register is silent.", type: "ESTIMATE_MODEL" },
-      { id: randomUUID(), name: "Manual Data Entry", description: "Corrections and additions entered directly by data staff.", type: "MANUAL_ENTRY" },
+      { id: uuid(), name: "June 2026 Official Voter Register", description: "Grenada Electoral Office register export.", type: "OFFICIAL_REGISTER" },
+      { id: uuid(), name: "Field Canvass Reports", description: "Door-to-door and phone canvassing results.", type: "FIELD_CANVASS" },
+      { id: uuid(), name: "Demographic Estimate Model", description: "Age-band and occupation inference where the register is silent.", type: "ESTIMATE_MODEL" },
+      { id: uuid(), name: "Manual Data Entry", description: "Corrections and additions entered directly by data staff.", type: "MANUAL_ENTRY" },
     ],
   });
 
